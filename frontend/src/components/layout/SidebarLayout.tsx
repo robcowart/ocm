@@ -37,7 +37,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
   ]
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen">
       {/* Sidebar */}
       <div className="hidden border-r bg-muted/40 md:block md:w-[220px] lg:w-[280px]">
         <div className="flex h-full max-h-screen flex-col gap-2">
@@ -101,7 +101,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
           <div className="w-full flex-1">
@@ -118,7 +118,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-auto">
           {children}
         </main>
       </div>

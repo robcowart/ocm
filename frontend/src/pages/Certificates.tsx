@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Download, Trash2, RefreshCw, Copy } from 'lucide-react'
+import { Plus, Download, Trash2, RefreshCw, Copy, Package } from 'lucide-react'
 import SidebarLayout from '@/components/layout/SidebarLayout'
 import apiClient from '@/lib/api'
 import {
@@ -185,6 +186,65 @@ export default function Certificates() {
     }
   }
 
+  const handleBulkExport = async (caName: string, certificates: any[], format: string) => {
+    try {
+      // Dynamic import of JSZip
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      
+      // Export each certificate and add to ZIP
+      for (const cert of certificates) {
+        try {
+          const response = await apiClient.exportCertificate(cert.id, format, 'password123')
+          
+          // Extract filename from Content-Disposition header or generate one
+          let filename = `${cert.common_name}.${format === 'pkcs12' ? 'pfx' : 'pem'}`
+          const contentDisposition = response.headers['content-disposition']
+          if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename=(.+)/)
+            if (filenameMatch && filenameMatch[1]) {
+              filename = filenameMatch[1].replace(/['"]/g, '')
+            }
+          }
+          
+          // Add file to ZIP
+          zip.file(filename, response.data)
+        } catch (error) {
+          console.error(`Failed to export certificate ${cert.common_name}:`, error)
+          // Continue with other certificates
+        }
+      }
+      
+      // Generate ZIP file
+      const blob = await zip.generateAsync({ type: 'blob' })
+      
+      // Sanitize CA name for filename (remove special characters)
+      const sanitizedCaName = caName.replace(/[^a-zA-Z0-9-_]/g, '_')
+      const zipFilename = `${sanitizedCaName}-certificates-${format}.zip`
+      
+      // Download ZIP file
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = zipFilename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+      toast({
+        title: "Success",
+        description: `Exported ${certificates.length} certificate${certificates.length === 1 ? '' : 's'} as ${format.toUpperCase()}`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to export certificates",
+        variant: "destructive",
+      })
+    }
+  }
+
   const openDeleteDialog = (cert: any) => {
     setDeleteTarget(cert)
     setIsDeleteOpen(true)
@@ -318,80 +378,101 @@ export default function Certificates() {
         </div>
       ) : (
         <div className="space-y-6">
-          {groupedCertificates.map((group) => (
-            <div key={group.authorityId} className="space-y-3">
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-semibold">{group.caName}</h2>
-                <Badge variant="secondary">
-                  {group.certificates.length} {group.certificates.length === 1 ? 'certificate' : 'certificates'}
-                </Badge>
-              </div>
-              
-              <div className="grid gap-3">
-                {group.certificates.map((cert: any) => (
-                  <Card key={cert.id} className="overflow-hidden">
-                    <CardHeader className="py-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <CardTitle className="text-sm">{cert.common_name}</CardTitle>
-                            {getStatusBadge(cert.status)}
-                          </div>
-                          <CardDescription className="mt-2">
-                            <div className="space-y-1 text-xs">
-                              <div><strong>Valid Until:</strong> {new Date(cert.not_after).toLocaleDateString()}</div>
-                              {cert.sans && cert.sans.length > 0 && (
-                                <div><strong>SANs:</strong> {cert.sans.join(', ')}</div>
-                              )}
+          {groupedCertificates.map((group, index) => (
+            <div key={group.authorityId}>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-semibold">{group.caName}</h2>
+                    <Badge variant="secondary">
+                      {group.certificates.length} {group.certificates.length === 1 ? 'certificate' : 'certificates'}
+                    </Badge>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Package className="h-4 w-4 mr-2" />
+                        Export All
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => handleBulkExport(group.caName, group.certificates, 'pem')}>
+                        Export All as PEM
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkExport(group.caName, group.certificates, 'pkcs12')}>
+                        Export All as PFX
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                
+                <div className="grid gap-3">
+                  {group.certificates.map((cert: any) => (
+                    <Card key={cert.id} className="overflow-hidden">
+                      <CardHeader className="py-3">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <CardTitle className="text-sm">{cert.common_name}</CardTitle>
+                              {getStatusBadge(cert.status)}
                             </div>
-                          </CardDescription>
+                            <CardDescription className="mt-2">
+                              <div className="space-y-1 text-xs">
+                                <div><strong>Valid Until:</strong> {new Date(cert.not_after).toLocaleDateString()}</div>
+                                {cert.sans && cert.sans.length > 0 && (
+                                  <div><strong>SANs:</strong> {cert.sans.join(', ')}</div>
+                                )}
+                              </div>
+                            </CardDescription>
+                          </div>
+                          <div className="flex gap-2">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <Download className="h-4 w-4 mr-2" />
+                                  Export
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent>
+                                <DropdownMenuItem onClick={() => handleExport(cert.id, 'pem')}>
+                                  Export as PEM
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleExport(cert.id, 'pkcs12')}>
+                                  Export as PFX
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openRenewDialog(cert)}
+                              title="Renew certificate with new expiration"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCloneDialog(cert)}
+                              title="Clone certificate with same settings"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => openDeleteDialog(cert)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Download className="h-4 w-4 mr-2" />
-                                Export
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                              <DropdownMenuItem onClick={() => handleExport(cert.id, 'pem')}>
-                                Export as PEM
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleExport(cert.id, 'pkcs12')}>
-                                Export as PFX
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openRenewDialog(cert)}
-                            title="Renew certificate with new expiration"
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openCloneDialog(cert)}
-                            title="Clone certificate with same settings"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => openDeleteDialog(cert)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
               </div>
+              {index < groupedCertificates.length - 1 && <Separator className="my-6" />}
             </div>
           ))}
         </div>
