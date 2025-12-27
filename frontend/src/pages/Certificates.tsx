@@ -242,6 +242,50 @@ export default function Certificates() {
     }
   }
 
+  // Group certificates by CA
+  const groupCertificatesByCA = () => {
+    if (!certificates || !authorities) return []
+
+    // Create a map of authority_id to authority name
+    const authorityMap = new Map(
+      authorities.map((auth: any) => [auth.id, auth.friendly_name])
+    )
+
+    // Group certificates by authority_id
+    const groups = new Map<string, { caName: string; certificates: any[] }>()
+    
+    certificates.forEach((cert: any) => {
+      const caName = authorityMap.get(cert.authority_id) || cert.issuer_name || 'Unknown CA'
+      
+      if (!groups.has(cert.authority_id)) {
+        groups.set(cert.authority_id, {
+          caName,
+          certificates: []
+        })
+      }
+      
+      groups.get(cert.authority_id)!.certificates.push(cert)
+    })
+
+    // Sort certificates within each group by common name
+    groups.forEach(group => {
+      group.certificates.sort((a: any, b: any) => 
+        (a.common_name || '').localeCompare(b.common_name || '', undefined, { sensitivity: 'base' })
+      )
+    })
+
+    // Convert to array and sort groups by CA name
+    return Array.from(groups.entries())
+      .map(([authorityId, group]) => ({
+        authorityId,
+        caName: group.caName,
+        certificates: group.certificates
+      }))
+      .sort((a, b) => a.caName.localeCompare(b.caName, undefined, { sensitivity: 'base' }))
+  }
+
+  const groupedCertificates = groupCertificatesByCA()
+
   return (
     <SidebarLayout>
       <div className="flex items-center justify-between">
@@ -256,78 +300,88 @@ export default function Certificates() {
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
+      ) : certificates?.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          No certificates found. Create one to get started.
+        </div>
       ) : (
-        <div className="grid gap-4">
-          {certificates?.map((cert: any) => (
-            <Card key={cert.id} className="overflow-hidden">
-              <CardHeader className="py-3">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <CardTitle className="text-lg">{cert.common_name}</CardTitle>
-                      {getStatusBadge(cert.status)}
-                    </div>
-                    <CardDescription className="mt-2">
-                      <div className="space-y-1">
-                        <div><strong>Issuer:</strong> {cert.issuer_name}</div>
-                        <div><strong>Serial:</strong> {cert.serial_number}</div>
-                        <div><strong>Valid Until:</strong> {new Date(cert.not_after).toLocaleDateString()}</div>
-                        {cert.sans && cert.sans.length > 0 && (
-                          <div><strong>SANs:</strong> {cert.sans.join(', ')}</div>
-                        )}
+        <div className="space-y-6">
+          {groupedCertificates.map((group) => (
+            <div key={group.authorityId} className="space-y-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold">{group.caName}</h2>
+                <Badge variant="secondary">
+                  {group.certificates.length} {group.certificates.length === 1 ? 'certificate' : 'certificates'}
+                </Badge>
+              </div>
+              
+              <div className="grid gap-3">
+                {group.certificates.map((cert: any) => (
+                  <Card key={cert.id} className="overflow-hidden">
+                    <CardHeader className="py-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <CardTitle className="text-sm">{cert.common_name}</CardTitle>
+                            {getStatusBadge(cert.status)}
+                          </div>
+                          <CardDescription className="mt-2">
+                            <div className="space-y-1 text-xs">
+                              <div><strong>Valid Until:</strong> {new Date(cert.not_after).toLocaleDateString()}</div>
+                              {cert.sans && cert.sans.length > 0 && (
+                                <div><strong>SANs:</strong> {cert.sans.join(', ')}</div>
+                              )}
+                            </div>
+                          </CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm">
+                                <Download className="h-4 w-4 mr-2" />
+                                Export
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              <DropdownMenuItem onClick={() => handleExport(cert.id, 'pem')}>
+                                Export as PEM
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleExport(cert.id, 'pkcs12')}>
+                                Export as PFX
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openRenewDialog(cert)}
+                            title="Renew certificate with new expiration"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openCloneDialog(cert)}
+                            title="Clone certificate with same settings"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => openDeleteDialog(cert)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Download className="h-4 w-4 mr-2" />
-                          Export
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem onClick={() => handleExport(cert.id, 'pem')}>
-                          Export as PEM
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleExport(cert.id, 'pkcs12')}>
-                          Export as PFX
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openRenewDialog(cert)}
-                      title="Renew certificate with new expiration"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openCloneDialog(cert)}
-                      title="Clone certificate with same settings"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => openDeleteDialog(cert)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
-          {certificates?.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              No certificates found. Create one to get started.
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
             </div>
-          )}
+          ))}
         </div>
       )}
 

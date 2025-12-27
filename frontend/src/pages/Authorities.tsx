@@ -178,19 +178,20 @@ export default function Authorities() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {authorities?.map((authority: any) => (
+          {authorities?.slice().sort((a: any, b: any) => 
+            (a.friendly_name || '').localeCompare(b.friendly_name || '', undefined, { sensitivity: 'base' })
+          ).map((authority: any) => (
             <Card key={authority.id} className="overflow-hidden">
               <CardHeader className="py-3">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
-                      <CardTitle className="text-lg">{authority.friendly_name}</CardTitle>
+                      <CardTitle className="text-sm">{authority.friendly_name}</CardTitle>
                       {getStatusBadge(authority.status)}
                     </div>
                     <CardDescription className="mt-2">
-                      <div className="space-y-1">
+                      <div className="space-y-1 text-xs">
                         <div><strong>CN:</strong> {authority.common_name}</div>
-                        <div><strong>Serial:</strong> {authority.serial_number}</div>
                         <div><strong>Valid Until:</strong> {new Date(authority.not_after).toLocaleDateString()}</div>
                       </div>
                     </CardDescription>

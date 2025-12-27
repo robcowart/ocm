@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { Shield } from 'lucide-react'
 import apiClient from '@/lib/api'
+import encryptionBg from '@/assets/encryption.png'
 
 export default function LoginForm() {
   const [username, setUsername] = useState('')
@@ -41,9 +42,13 @@ export default function LoginForm() {
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Left side - Testimonial/Branding */}
       <div className="relative hidden lg:flex flex-col justify-between bg-muted p-10 text-white dark:border-r">
-        <div className="absolute inset-0 bg-zinc-900" />
-        <div className="relative z-20 flex items-center text-lg font-medium">
-          <Shield className="mr-2 h-6 w-6" />
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat" 
+          style={{ backgroundImage: `url(${encryptionBg})` }}
+        />
+        <div className="absolute inset-0 bg-black/85" />
+        <div className="relative z-20 flex items-center text-2xl font-medium">
+          <Shield className="mr-3 h-10 w-10" />
           Open Certificate Manager
         </div>
       </div>

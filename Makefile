@@ -1,8 +1,11 @@
-.PHONY: build run test clean docker-build docker-run frontend-build frontend-dev deps
+.PHONY: build run test clean docker-build docker-run frontend-build frontend-dev deps build-all
 
 # Build the Go binary
 build:
 	CGO_ENABLED=1 go build -o ocm ./cmd/ocm
+
+# Build everything (frontend + backend)
+build-all: frontend-build build
 
 # Run locally (requires config.yaml)
 run: build
@@ -33,6 +36,9 @@ docker-run:
 # Build frontend only
 frontend-build:
 	cd frontend && npm run build
+	rm -rf static
+	mkdir -p static
+	cp -r frontend/dist/* static/
 
 # Run frontend dev server
 frontend-dev:
