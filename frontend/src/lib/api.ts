@@ -112,12 +112,12 @@ class APIClient {
   }
 
   async exportCertificate(id: string, format: string, password?: string, legacy?: boolean) {
-    const { data } = await this.client.post(
+    const response = await this.client.post(
       `/certificates/${id}/export`,
       { format, password, legacy },
       { responseType: 'blob' }
     )
-    return data
+    return response
   }
 
   async revokeCertificate(id: string) {

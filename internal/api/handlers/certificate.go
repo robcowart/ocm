@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/robcowart/ocm/internal/service"
@@ -119,6 +121,35 @@ func (h *CertificateHandler) CreateCertificate(c *gin.Context) {
 	c.JSON(http.StatusCreated, certificate)
 }
 
+// sanitizeFilename sanitizes a string to be safe for use as a filename
+func sanitizeFilename(name string) string {
+	// Replace invalid filename characters with underscores
+	invalidChars := regexp.MustCompile(`[/\\:*?"<>|]`)
+	sanitized := invalidChars.ReplaceAllString(name, "_")
+	
+	// Replace spaces with underscores
+	sanitized = strings.ReplaceAll(sanitized, " ", "_")
+	
+	// Remove parentheses
+	sanitized = strings.ReplaceAll(sanitized, "(", "")
+	sanitized = strings.ReplaceAll(sanitized, ")", "")
+	
+	// Trim leading/trailing dots and spaces
+	sanitized = strings.Trim(sanitized, ". ")
+	
+	// Limit length to 200 characters
+	if len(sanitized) > 200 {
+		sanitized = sanitized[:200]
+	}
+	
+	// If empty after sanitization, use default
+	if sanitized == "" {
+		sanitized = "certificate"
+	}
+	
+	return sanitized
+}
+
 // ExportRequest represents a request to export a certificate
 type ExportRequest struct {
 	Format   string `json:"format" binding:"required"`   // "pem" or "pkcs12"
@@ -144,6 +175,14 @@ func (h *CertificateHandler) ExportCertificate(c *gin.Context) {
 		return
 	}
 
+	// Get certificate to retrieve its common name
+	cert, err := h.certService.GetCertificate(id)
+	if err != nil {
+		h.logger.Error("Failed to get certificate", zap.String("id", id), zap.Error(err))
+		c.JSON(http.StatusNotFound, gin.H{"error": "certificate not found"})
+		return
+	}
+
 	data, err := h.certService.ExportCertificate(&service.ExportRequest{
 		CertificateID: id,
 		Format:        req.Format,
@@ -156,18 +195,21 @@ func (h *CertificateHandler) ExportCertificate(c *gin.Context) {
 		return
 	}
 
+	// Sanitize the common name for use as filename
+	baseFilename := sanitizeFilename(cert.CommonName)
+
 	// Set content type and filename based on format
 	var contentType, filename string
 	switch req.Format {
 	case "pem":
 		contentType = "application/x-pem-file"
-		filename = "certificate.pem"
+		filename = baseFilename + ".pem"
 	case "pkcs12", "pfx":
 		contentType = "application/x-pkcs12"
-		filename = "certificate.pfx"
+		filename = baseFilename + ".pfx"
 	default:
 		contentType = "application/octet-stream"
-		filename = "certificate"
+		filename = baseFilename
 	}
 
 	c.Header("Content-Disposition", "attachment; filename="+filename)

@@ -151,11 +151,23 @@ export default function Certificates() {
 
   const handleExport = async (id: string, format: string) => {
     try {
-      const blob = await apiClient.exportCertificate(id, format, 'password123')
+      const response = await apiClient.exportCertificate(id, format, 'password123')
+      
+      // Extract filename from Content-Disposition header
+      let filename = `certificate.${format === 'pkcs12' ? 'pfx' : 'pem'}`
+      const contentDisposition = response.headers['content-disposition']
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename=(.+)/)
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '') // Remove quotes if present
+        }
+      }
+      
+      const blob = response.data
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `certificate.${format === 'pkcs12' ? 'pfx' : 'pem'}`
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
