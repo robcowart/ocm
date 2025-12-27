@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # SQLite variant (single container)
+  ocm-sqlite:
+    build: .
+    image: ocm-cert-manager:latest
+    container_name: ocm-sqlite
+    ports:
+      - "8080:8080"
+    volumes:
+      - ocm-data:/app/data
+    environment:
+      - OCM_LOG_LEVEL=info
+      - OCM_DB_TYPE=sqlite
+      - OCM_DB_SQLITE_PATH=/app/data/ocm.db
+    restart: unless-stopped
+
+  # PostgreSQL variant
+  ocm-postgres:
+    build: .
+    image: ocm-cert-manager:latest
+    container_name: ocm-postgres
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+    environment:
+      - OCM_LOG_LEVEL=info
+      - OCM_DB_TYPE=postgres
+      - OCM_DB_POSTGRES_HOST=postgres
+      - OCM_DB_POSTGRES_PORT=5432
+      - OCM_DB_POSTGRES_DATABASE=ocm
+      - OCM_DB_POSTGRES_USER=ocm
+      - OCM_DB_POSTGRES_PASSWORD=ocm_password
+      - OCM_DB_POSTGRES_SSL_MODE=disable
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ocm-postgres-db
+    environment:
+      - POSTGRES_DB=ocm
+      - POSTGRES_USER=ocm
+      - POSTGRES_PASSWORD=ocm_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  ocm-data:
+  postgres-data:

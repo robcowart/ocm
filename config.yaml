@@ -1,0 +1,48 @@
+server:
+  port: 8080
+  host: 0.0.0.0
+  read_timeout: 30s
+  write_timeout: 30s
+  tls_enabled: false
+  tls_cert: ""
+  tls_key: ""
+
+database:
+  type: sqlite  # sqlite or postgres
+  sqlite:
+    path: ./data/ocm.db
+  postgres:
+    host: localhost
+    port: 5432
+    database: ocm
+    user: ocm
+    password: ""
+    ssl_mode: disable
+    max_open_conns: 25
+    max_idle_conns: 5
+
+jwt:
+  secret: ""  # Generated on first run if empty
+  expiration: 24h
+  issuer: ocm-cert-manager
+
+crypto:
+  default_ca_validity: 87600h  # 10 years
+  default_cert_validity: 8760h  # 1 year
+  default_algorithm: rsa
+  default_rsa_bits: 2048
+  default_ec_curve: P256  # P256 or P384
+
+logging:
+  level: info  # debug, info, warn, error
+  format: json  # json or console
+  output: stdout
+
+security:
+  cors_enabled: true
+  cors_origins:
+    - http://localhost:3000
+    - http://localhost:8080
+  rate_limit_enabled: true
+  rate_limit_requests: 100
+  rate_limit_window: 1m
