@@ -9,6 +9,7 @@ import (
 )
 
 // ExportPEM exports a certificate and private key as PEM format
+// Private keys are exported in PKCS#8 format for universal compatibility
 func ExportPEM(certPEM string, privateKeyDER []byte, algorithm string, caCertPEMs ...string) (string, error) {
 	// Start with the certificate
 	result := certPEM
@@ -18,25 +19,62 @@ func ExportPEM(certPEM string, privateKeyDER []byte, algorithm string, caCertPEM
 		result += caPEM
 	}
 
-	// Add private key
-	var pemType string
-	switch algorithm {
-	case "rsa":
-		pemType = "RSA PRIVATE KEY"
-	case "ecdsa":
-		pemType = "EC PRIVATE KEY"
-	default:
-		return "", fmt.Errorf("unsupported algorithm: %s", algorithm)
+	// Parse the private key from DER format (PKCS#1 for RSA, SEC1 for ECDSA)
+	privateKey, err := ParsePrivateKey(privateKeyDER, algorithm)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse private key: %w", err)
 	}
 
+	// Convert to PKCS#8 format (universal format compatible with modern applications)
+	pkcs8DER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal private key to PKCS#8: %w", err)
+	}
+
+	// Encode as PEM with PKCS#8 format
 	keyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  pemType,
-		Bytes: privateKeyDER,
+		Type:  "PRIVATE KEY",
+		Bytes: pkcs8DER,
 	})
 
 	result += string(keyPEM)
 
 	return result, nil
+}
+
+// ExportPEMSeparate exports certificate and private key as separate PEM files
+// certFile contains the certificate + CA chain, keyFile contains only the private key
+// Private keys are exported in PKCS#8 format for universal compatibility
+func ExportPEMSeparate(certPEM string, privateKeyDER []byte, algorithm string, caCertPEMs ...string) (certFile, keyFile string, err error) {
+	// Build certificate file (certificate + CA chain)
+	certFile = certPEM
+
+	// Add CA certificates in order (intermediate first, then root)
+	for _, caPEM := range caCertPEMs {
+		certFile += caPEM
+	}
+
+	// Parse the private key from DER format (PKCS#1 for RSA, SEC1 for ECDSA)
+	privateKey, err := ParsePrivateKey(privateKeyDER, algorithm)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	// Convert to PKCS#8 format (universal format compatible with modern applications)
+	pkcs8DER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal private key to PKCS#8: %w", err)
+	}
+
+	// Encode as PEM with PKCS#8 format
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: pkcs8DER,
+	})
+
+	keyFile = string(keyPEM)
+
+	return certFile, keyFile, nil
 }
 
 // ExportPKCS12 exports a certificate and private key as PKCS#12/PFX format

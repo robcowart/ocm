@@ -86,10 +86,10 @@ class APIClient {
     await this.client.delete(`/authorities/${id}`)
   }
 
-  async exportAuthority(id: string, format: string, password?: string, legacy?: boolean) {
+  async exportAuthority(id: string, format: string, password?: string, legacy?: boolean, certOnly?: boolean) {
     const { data } = await this.client.post(
       `/authorities/${id}/export`,
-      { format, password, legacy },
+      { format, password, legacy, cert_only: certOnly },
       { responseType: 'blob' }
     )
     return data
@@ -111,10 +111,10 @@ class APIClient {
     return data
   }
 
-  async exportCertificate(id: string, format: string, password?: string, legacy?: boolean) {
+  async exportCertificate(id: string, format: string, password?: string, legacy?: boolean, splitFiles?: boolean) {
     const response = await this.client.post(
       `/certificates/${id}/export`,
-      { format, password, legacy },
+      { format, password, legacy, split_files: splitFiles },
       { responseType: 'blob' }
     )
     return response

@@ -177,11 +177,12 @@ type ExportAuthorityRequest struct {
 	Format   string `json:"format" binding:"required"` // "pem" or "pkcs12"
 	Password string `json:"password"`                  // For PKCS12
 	Legacy   bool   `json:"legacy"`                    // Use legacy encryption
+	CertOnly bool   `json:"cert_only"`                 // Export certificate only (no private key)
 }
 
-// ExportAuthority exports a CA certificate and private key
+// ExportAuthority exports a CA certificate and optionally private key
 // @Summary Export CA
-// @Description Export a Certificate Authority in PEM or PKCS#12 format
+// @Description Export a Certificate Authority in PEM or PKCS#12 format. Use cert_only=true for trust anchors.
 // @Accept json
 // @Produce application/octet-stream
 // @Param id path string true "Authority ID"
@@ -202,6 +203,7 @@ func (h *CAHandler) ExportAuthority(c *gin.Context) {
 		Format:      req.Format,
 		Password:    req.Password,
 		Legacy:      req.Legacy,
+		CertOnly:    req.CertOnly,
 	})
 	if err != nil {
 		h.logger.Error("Failed to export authority", zap.String("id", id), zap.Error(err))
@@ -209,12 +211,16 @@ func (h *CAHandler) ExportAuthority(c *gin.Context) {
 		return
 	}
 
-	// Set content type and filename based on format
+	// Set content type and filename based on format and cert_only
 	var contentType, filename string
 	switch req.Format {
 	case "pem":
 		contentType = "application/x-pem-file"
-		filename = "ca.pem"
+		if req.CertOnly {
+			filename = "ca-cert.pem"
+		} else {
+			filename = "ca.pem"
+		}
 	case "pkcs12", "pfx":
 		contentType = "application/x-pkcs12"
 		filename = "ca.pfx"

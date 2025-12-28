@@ -327,9 +327,10 @@ type ExportAuthorityRequest struct {
 	Format      string // "pem" or "pkcs12"
 	Password    string // For PKCS12
 	Legacy      bool   // Use legacy encryption for PKCS12
+	CertOnly    bool   // Export certificate only (no private key) - for PEM format only
 }
 
-// ExportAuthority exports a CA certificate and private key
+// ExportAuthority exports a CA certificate and optionally private key
 func (s *CAService) ExportAuthority(req *ExportAuthorityRequest) ([]byte, error) {
 	// Get the CA
 	authority, err := s.db.GetAuthority(req.AuthorityID)
@@ -337,37 +338,37 @@ func (s *CAService) ExportAuthority(req *ExportAuthorityRequest) ([]byte, error)
 		return nil, fmt.Errorf("failed to get authority: %w", err)
 	}
 
-	// Get the CA private key
-	privateKey, err := s.GetCAPrivateKey(authority)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get CA private key: %w", err)
-	}
-
-	// Parse CA certificate
-	caCert, err := crypto.ParseCertificatePEM([]byte(authority.CertificatePEM))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse CA certificate: %w", err)
-	}
-
-	// Determine algorithm
-	algorithm := crypto.GetAlgorithmFromCert(caCert)
-
-	// Get master key to decrypt private key
-	masterKey, err := s.getMasterKey()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get master key: %w", err)
-	}
-
-	// Decrypt private key
-	privateKeyDER, err := crypto.DecryptPrivateKey(authority.PrivateKeyEnc, masterKey, authority.SerialNumber)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt private key: %w", err)
-	}
-
 	// Export based on format
 	switch req.Format {
 	case "pem":
-		// Export as PEM (certificate + private key, no CA chain since this IS the CA)
+		// If CertOnly is true, return just the certificate
+		if req.CertOnly {
+			return []byte(authority.CertificatePEM), nil
+		}
+
+		// Otherwise, export certificate + private key
+		// Parse CA certificate
+		caCert, err := crypto.ParseCertificatePEM([]byte(authority.CertificatePEM))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse CA certificate: %w", err)
+		}
+
+		// Determine algorithm
+		algorithm := crypto.GetAlgorithmFromCert(caCert)
+
+		// Get master key to decrypt private key
+		masterKey, err := s.getMasterKey()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get master key: %w", err)
+		}
+
+		// Decrypt private key
+		privateKeyDER, err := crypto.DecryptPrivateKey(authority.PrivateKeyEnc, masterKey, authority.SerialNumber)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt private key: %w", err)
+		}
+
+		// Export as PEM (certificate + private key)
 		pemBundle, err := crypto.ExportPEM(authority.CertificatePEM, privateKeyDER, algorithm)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export PEM: %w", err)
@@ -375,6 +376,19 @@ func (s *CAService) ExportAuthority(req *ExportAuthorityRequest) ([]byte, error)
 		return []byte(pemBundle), nil
 
 	case "pkcs12", "pfx":
+		// PKCS12 always needs both certificate and private key
+		// Get the CA private key
+		privateKey, err := s.GetCAPrivateKey(authority)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get CA private key: %w", err)
+		}
+
+		// Parse CA certificate
+		caCert, err := crypto.ParseCertificatePEM([]byte(authority.CertificatePEM))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse CA certificate: %w", err)
+		}
+
 		// Export as PKCS12/PFX
 		var pfxData []byte
 		if req.Legacy {

@@ -1,5 +1,5 @@
 # Stage 1: Frontend Build
-FROM node:20-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,13 +7,15 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Backend Build
+# Note: Not using --platform=$BUILDPLATFORM here because CGO requires
+# native compilation or complex cross-compiler setup
 FROM golang:1.22-alpine AS backend-builder
 WORKDIR /app
 RUN apk add --no-cache git gcc musl-dev sqlite-dev
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
-RUN CGO_ENABLED=1 GOOS=linux go build -o ocm ./cmd/ocm
+RUN CGO_ENABLED=1 go build -o ocm ./cmd/ocm
 
 # Stage 3: Runtime
 FROM alpine:latest
@@ -32,6 +34,6 @@ RUN mkdir -p /app/data && chown -R appuser:appgroup /app/data /app
 # Switch to non-root user
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8000
 
 ENTRYPOINT ["/app/ocm"]

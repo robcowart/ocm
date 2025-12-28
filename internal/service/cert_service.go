@@ -1,6 +1,8 @@
 package service
 
 import (
+	"archive/zip"
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -201,6 +203,7 @@ type ExportRequest struct {
 	Format        string // "pem" or "pkcs12"
 	Password      string // For PKCS12
 	Legacy        bool   // Use legacy encryption for PKCS12
+	SplitFiles    bool   // Export cert and key as separate files (PEM only)
 }
 
 // ExportCertificate exports a certificate in the requested format
@@ -252,6 +255,25 @@ func (s *CertificateService) ExportCertificate(req *ExportRequest) ([]byte, erro
 	// Export based on format
 	switch req.Format {
 	case "pem":
+		if req.SplitFiles {
+			// Export as separate certificate and key files in a ZIP
+			certFile, keyFile, err := crypto.ExportPEMSeparate(cert.CertificatePEM, privateKeyDER, algorithm, authority.CertificatePEM)
+			if err != nil {
+				return nil, fmt.Errorf("failed to export PEM separately: %w", err)
+			}
+
+			// Create ZIP archive with both files
+			zipData, err := createZIPWithFiles(map[string]string{
+				cert.CommonName + "_cert.pem": certFile,
+				cert.CommonName + "_key.pem":  keyFile,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create ZIP archive: %w", err)
+			}
+			return zipData, nil
+		}
+
+		// Export as single combined PEM file (default behavior)
 		pemBundle, err := crypto.ExportPEM(cert.CertificatePEM, privateKeyDER, algorithm, authority.CertificatePEM)
 		if err != nil {
 			return nil, fmt.Errorf("failed to export PEM: %w", err)
@@ -375,4 +397,30 @@ func (s *CertificateService) buildCertificateStatus(cert *models.Certificate) (*
 	}
 
 	return status, nil
+}
+
+// createZIPWithFiles creates a ZIP archive containing the provided files
+// files is a map of filename -> content
+func createZIPWithFiles(files map[string]string) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	zipWriter := zip.NewWriter(buf)
+
+	for filename, content := range files {
+		fileWriter, err := zipWriter.Create(filename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create file in ZIP: %w", err)
+		}
+
+		_, err = fileWriter.Write([]byte(content))
+		if err != nil {
+			return nil, fmt.Errorf("failed to write file content: %w", err)
+		}
+	}
+
+	err := zipWriter.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close ZIP writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }

@@ -150,12 +150,12 @@ export default function Certificates() {
     })
   }
 
-  const handleExport = async (id: string, format: string) => {
+  const handleExport = async (id: string, format: string, splitFiles: boolean = false) => {
     try {
-      const response = await apiClient.exportCertificate(id, format, 'password123')
+      const response = await apiClient.exportCertificate(id, format, 'password123', false, splitFiles)
       
       // Extract filename from Content-Disposition header
-      let filename = `certificate.${format === 'pkcs12' ? 'pfx' : 'pem'}`
+      let filename = `certificate.${format === 'pkcs12' ? 'pfx' : splitFiles ? 'zip' : 'pem'}`
       const contentDisposition = response.headers['content-disposition']
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename=(.+)/)
@@ -173,9 +173,11 @@ export default function Certificates() {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
+      
+      const exportType = splitFiles ? 'separate files' : format.toUpperCase()
       toast({
         title: "Success",
-        description: `Certificate exported as ${format.toUpperCase()}`,
+        description: `Certificate exported as ${exportType}`,
       })
     } catch (error: any) {
       toast({
@@ -186,7 +188,7 @@ export default function Certificates() {
     }
   }
 
-  const handleBulkExport = async (caName: string, certificates: any[], format: string) => {
+  const handleBulkExport = async (caName: string, certificates: any[], format: string, splitFiles: boolean = false) => {
     try {
       // Dynamic import of JSZip
       const JSZip = (await import('jszip')).default
@@ -195,20 +197,38 @@ export default function Certificates() {
       // Export each certificate and add to ZIP
       for (const cert of certificates) {
         try {
-          const response = await apiClient.exportCertificate(cert.id, format, 'password123')
+          const response = await apiClient.exportCertificate(cert.id, format, 'password123', false, splitFiles)
           
-          // Extract filename from Content-Disposition header or generate one
-          let filename = `${cert.common_name}.${format === 'pkcs12' ? 'pfx' : 'pem'}`
-          const contentDisposition = response.headers['content-disposition']
-          if (contentDisposition) {
-            const filenameMatch = contentDisposition.match(/filename=(.+)/)
-            if (filenameMatch && filenameMatch[1]) {
-              filename = filenameMatch[1].replace(/['"]/g, '')
+          if (splitFiles && format === 'pem') {
+            // For split files, the response is a ZIP containing cert and key
+            // We need to extract these and add them to a folder for each cert
+            const certZip = await JSZip.loadAsync(response.data)
+            const certFolder = zip.folder(cert.common_name)
+            
+            // Extract and add both files to the certificate's folder
+            // Use Object.entries to properly await each file extraction
+            const files = Object.entries(certZip.files)
+            for (const [relativePath, file] of files) {
+              if (!file.dir) {
+                const content = await file.async('blob')
+                certFolder?.file(relativePath, content)
+              }
             }
+          } else {
+            // Single file export (existing behavior)
+            // Extract filename from Content-Disposition header or generate one
+            let filename = `${cert.common_name}.${format === 'pkcs12' ? 'pfx' : 'pem'}`
+            const contentDisposition = response.headers['content-disposition']
+            if (contentDisposition) {
+              const filenameMatch = contentDisposition.match(/filename=(.+)/)
+              if (filenameMatch && filenameMatch[1]) {
+                filename = filenameMatch[1].replace(/['"]/g, '')
+              }
+            }
+            
+            // Add file to ZIP
+            zip.file(filename, response.data)
           }
-          
-          // Add file to ZIP
-          zip.file(filename, response.data)
         } catch (error) {
           console.error(`Failed to export certificate ${cert.common_name}:`, error)
           // Continue with other certificates
@@ -220,7 +240,8 @@ export default function Certificates() {
       
       // Sanitize CA name for filename (remove special characters)
       const sanitizedCaName = caName.replace(/[^a-zA-Z0-9-_]/g, '_')
-      const zipFilename = `${sanitizedCaName}-certificates-${format}.zip`
+      const suffix = splitFiles ? '-split' : ''
+      const zipFilename = `${sanitizedCaName}-certificates-${format}${suffix}.zip`
       
       // Download ZIP file
       const url = window.URL.createObjectURL(blob)
@@ -232,9 +253,10 @@ export default function Certificates() {
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
       
+      const exportType = splitFiles ? 'separate files' : format.toUpperCase()
       toast({
         title: "Success",
-        description: `Exported ${certificates.length} certificate${certificates.length === 1 ? '' : 's'} as ${format.toUpperCase()}`,
+        description: `Exported ${certificates.length} certificate${certificates.length === 1 ? '' : 's'} as ${exportType}`,
       })
     } catch (error: any) {
       toast({
@@ -396,11 +418,14 @@ export default function Certificates() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => handleBulkExport(group.caName, group.certificates, 'pem')}>
-                        Export All as PEM
+                      <DropdownMenuItem onClick={() => handleBulkExport(group.caName, group.certificates, 'pem', false)}>
+                        Export All as PEM (single files)
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleBulkExport(group.caName, group.certificates, 'pkcs12')}>
-                        Export All as PFX
+                      <DropdownMenuItem onClick={() => handleBulkExport(group.caName, group.certificates, 'pem', true)}>
+                        Export All as PEM (cert + key)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkExport(group.caName, group.certificates, 'pkcs12', false)}>
+                        Export All as PFX/PKCS#12
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -434,11 +459,14 @@ export default function Certificates() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent>
-                                <DropdownMenuItem onClick={() => handleExport(cert.id, 'pem')}>
-                                  Export as PEM
+                                <DropdownMenuItem onClick={() => handleExport(cert.id, 'pem', false)}>
+                                  Export as PEM (single file)
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleExport(cert.id, 'pkcs12')}>
-                                  Export as PFX
+                                <DropdownMenuItem onClick={() => handleExport(cert.id, 'pem', true)}>
+                                  Export as PEM (cert + key)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleExport(cert.id, 'pkcs12', false)}>
+                                  Export as PFX/PKCS#12
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>

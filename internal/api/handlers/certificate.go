@@ -152,14 +152,15 @@ func sanitizeFilename(name string) string {
 
 // ExportRequest represents a request to export a certificate
 type ExportRequest struct {
-	Format   string `json:"format" binding:"required"`   // "pem" or "pkcs12"
-	Password string `json:"password"`                    // For PKCS12
-	Legacy   bool   `json:"legacy"`                      // Use legacy encryption
+	Format     string `json:"format" binding:"required"` // "pem" or "pkcs12"
+	Password   string `json:"password"`                  // For PKCS12
+	Legacy     bool   `json:"legacy"`                    // Use legacy encryption
+	SplitFiles bool   `json:"split_files"`               // Export cert and key as separate files (PEM only)
 }
 
 // ExportCertificate exports a certificate
 // @Summary Export certificate
-// @Description Export a certificate in PEM or PKCS#12 format
+// @Description Export a certificate in PEM or PKCS#12 format. Use split_files for separate cert/key files.
 // @Accept json
 // @Produce application/octet-stream
 // @Param id path string true "Certificate ID"
@@ -188,6 +189,7 @@ func (h *CertificateHandler) ExportCertificate(c *gin.Context) {
 		Format:        req.Format,
 		Password:      req.Password,
 		Legacy:        req.Legacy,
+		SplitFiles:    req.SplitFiles,
 	})
 	if err != nil {
 		h.logger.Error("Failed to export certificate", zap.String("id", id), zap.Error(err))
@@ -202,8 +204,13 @@ func (h *CertificateHandler) ExportCertificate(c *gin.Context) {
 	var contentType, filename string
 	switch req.Format {
 	case "pem":
-		contentType = "application/x-pem-file"
-		filename = baseFilename + ".pem"
+		if req.SplitFiles {
+			contentType = "application/zip"
+			filename = baseFilename + ".zip"
+		} else {
+			contentType = "application/x-pem-file"
+			filename = baseFilename + ".pem"
+		}
 	case "pkcs12", "pfx":
 		contentType = "application/x-pkcs12"
 		filename = baseFilename + ".pfx"

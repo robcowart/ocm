@@ -24,7 +24,7 @@ A secure, containerized PKI certificate management system for creating and manag
 docker-compose up -d ocm
 
 # Access the web interface
-open http://localhost:8080
+open http://localhost:8000
 ```
 
 #### PostgreSQL
@@ -43,7 +43,7 @@ To use PostgreSQL instead:
 docker-compose --profile postgres up -d
 
 # Access the web interface
-open http://localhost:8080
+open http://localhost:8000
 ```
 
 ### Using Docker Manually
@@ -54,7 +54,7 @@ docker build -t ocm:latest .
 
 # Run with SQLite
 docker run -d \
-  -p 8080:8080 \
+  -p 8000:8000 \
   -v ocm-data:/app/data \
   --name ocm \
   ocm:latest
@@ -94,11 +94,11 @@ npm install
 npm run dev
 ```
 
-The frontend dev server will proxy API requests to the backend at `http://localhost:8080`.
+The frontend dev server will proxy API requests to the backend at `http://localhost:8000`.
 
 ## First-Time Setup
 
-1. **Initial Access**: Navigate to `http://localhost:8080`
+1. **Initial Access**: Navigate to `http://localhost:8000`
 2. **Setup Wizard**: On first run, you'll be guided through initial setup
 3. **Create Admin Account**: Choose a username and strong password
 4. **Master Key**: The system will generate a master encryption key
@@ -202,11 +202,13 @@ All configuration options can be set via command line flags. Use `--help` to see
 #### Available Flags
 
 **General:**
+
 - `-c, --config` - Path to configuration file (default: `config.yaml`)
 - `-v, --version` - Print version and exit
 
 **Server:**
-- `--server.port` - HTTP server port (default: 8080)
+
+- `--server.port` - HTTP server port (default: 8000)
 - `--server.host` - Bind address (default: 0.0.0.0)
 - `--server.read-timeout` - Read timeout (e.g., 30s)
 - `--server.write-timeout` - Write timeout (e.g., 30s)
@@ -215,6 +217,7 @@ All configuration options can be set via command line flags. Use `--help` to see
 - `--server.tls-key` - Path to TLS key
 
 **Database:**
+
 - `--db.type` - Database type (sqlite or postgres)
 - `--db.sqlite.path` - SQLite database file path
 - `--db.postgres.host` - PostgreSQL host
@@ -227,11 +230,13 @@ All configuration options can be set via command line flags. Use `--help` to see
 - `--db.postgres.max-idle-conns` - Max idle connections (default: 5)
 
 **JWT:**
+
 - `--jwt.secret` - JWT signing secret (auto-generated if not provided)
 - `--jwt.expiration` - Token expiration (e.g., 24h)
 - `--jwt.issuer` - JWT issuer (default: ocm)
 
 **Cryptography:**
+
 - `--crypto.default-algorithm` - Default algorithm (rsa or ecdsa)
 - `--crypto.default-ca-validity` - CA validity period (e.g., 87600h = 10 years)
 - `--crypto.default-cert-validity` - Certificate validity (e.g., 8760h = 1 year)
@@ -239,11 +244,13 @@ All configuration options can be set via command line flags. Use `--help` to see
 - `--crypto.default-ec-curve` - EC curve (P256 or P384)
 
 **Logging:**
+
 - `-l, --log.level` - Log level (debug, info, warn, error)
 - `--log.format` - Log format (json or console)
 - `--log.output` - Log output (stdout or file path)
 
 **Security:**
+
 - `--security.cors-enabled` - Enable CORS
 - `--security.cors-origins` - CORS allowed origins (repeatable flag)
 - `--security.rate-limit-enabled` - Enable rate limiting
@@ -256,7 +263,7 @@ The application is configured via `config.yaml`:
 
 ```yaml
 server:
-  port: 8080                    # HTTP server port
+  port: 8000                    # HTTP server port
   host: 0.0.0.0                # Bind address
   read_timeout: 30s
   write_timeout: 30s
@@ -295,7 +302,7 @@ security:
   cors_enabled: true
   cors_origins:
     - http://localhost:3000
-    - http://localhost:8080
+    - http://localhost:8000
   rate_limit_enabled: true
   rate_limit_requests: 100
   rate_limit_window: 1m
@@ -332,8 +339,8 @@ docker run -d \
 
 # Using environment variables
 docker run -d \
-  -p 8080:8080 \
-  -e OCM_SERVER_PORT=8080 \
+  -p 8000:8000 \
+  -e OCM_SERVER_PORT=8000 \
   -e OCM_LOG_LEVEL=debug \
   -v ocm-data:/app/data \
   ocm:latest
@@ -431,7 +438,87 @@ npm run build
 docker build -t ocm:latest .
 
 # Run
-docker run -p 8080:8080 -v ocm-data:/app/data ocm:latest
+docker run -p 8000:8000 -v ocm-data:/app/data ocm:latest
+```
+
+### Multi-Architecture Release Build
+
+For building Docker images that support both AMD64 (x86_64) and ARM64 architectures:
+
+#### Prerequisites
+
+- Docker Desktop (Mac/Windows) or Docker Engine 19.03+ with buildx plugin
+- The `make` command
+
+#### Building a Multi-Arch Release
+
+```bash
+# Build multi-arch images (both amd64 and arm64)
+make release VERSION=1.0.0
+```
+
+**Important:** Multi-architecture builds cannot be loaded into the local Docker daemon directly. The `release` target builds the images and prepares them for pushing to a registry like Docker Hub.
+
+This command will:
+
+1. Set up Docker Buildx (if not already configured)
+2. Build the frontend assets
+3. Build Docker images for both `linux/amd64` and `linux/arm64` platforms
+4. Create a multi-platform manifest list
+
+#### Building for Local Testing
+
+To build and load a single-architecture image for local testing:
+
+```bash
+# Load AMD64 image locally (for Intel/AMD processors)
+make release-local VERSION=1.0.0 ARCH=amd64
+
+# Load ARM64 image locally (for Apple Silicon)
+make release-local VERSION=1.0.0 ARCH=arm64
+
+# Default is amd64 if ARCH not specified
+make release-local VERSION=1.0.0
+```
+
+This will load the image as `ocm:latest` and `ocm:1.0.0-amd64` (or `ocm:1.0.0-arm64`) in your local Docker.
+
+#### Manual Buildx Setup
+
+The release targets automatically set up Docker Buildx, but you can also run it manually:
+
+```bash
+make buildx-setup
+```
+
+This creates a builder instance named `ocm-builder` that supports multi-platform builds.
+
+#### Pushing to Docker Hub
+
+After building the multi-arch release, push directly to Docker Hub:
+
+```bash
+# Build and push multi-arch images in one command
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --tag yourusername/ocm:1.0.0 \
+  --tag yourusername/ocm:latest \
+  --push \
+  .
+```
+
+This creates a single manifest that references both AMD64 and ARM64 images. Docker will automatically pull the correct architecture when users run your image.
+
+#### Testing Multi-Arch Images
+
+To test a specific architecture locally:
+
+```bash
+# Run AMD64 image
+docker run --platform linux/amd64 -p 8000:8000 ocm:latest
+
+# Run ARM64 image
+docker run --platform linux/arm64 -p 8000:8000 ocm:latest
 ```
 
 ## Makefile Commands
@@ -441,7 +528,10 @@ make build           # Build Go binary
 make build-all       # Build everything (frontend + backend + docker image)
 make test            # Run tests
 make clean           # Clean build artifacts
-make docker-build    # Build Docker image
+make docker-build    # Build Docker image (single architecture)
+make release         # Build multi-arch images (amd64+arm64, for pushing)
+make release-local   # Build and load single-arch image locally
+make buildx-setup    # Setup Docker Buildx for multi-platform builds
 make frontend-build  # Build frontend only
 make frontend-dev    # Run frontend dev server
 make deps            # Install Go dependencies
@@ -492,28 +582,6 @@ rm data/ocm.db
 - Verify the certificate exists
 - Check that the master key is correctly configured
 - Review logs for encryption errors
-
-## Technology Stack
-
-**Backend:**
-
-- Go 1.22
-- Gin (HTTP framework)
-- Zap (structured logging)
-- crypto/x509 (PKI operations)
-- AES-256-GCM (key encryption)
-- JWT (authentication)
-- SQLite / PostgreSQL (database)
-
-**Frontend:**
-
-- React 18
-- TypeScript 5
-- Vite (build tool)
-- Shadcn UI (component library)
-- TanStack Query (data fetching)
-- React Router (routing)
-- Tailwind CSS (styling)
 
 ## License
 
