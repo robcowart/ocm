@@ -1,3 +1,5 @@
+// Package api provides HTTP routing and server configuration for the Open Certificate Manager.
+// It wires together handlers, middleware, and services to create the application's API endpoints.
 package api
 
 import (
@@ -28,7 +30,7 @@ func NewRouter(cfg *config.Config, db *database.Database, logger *zap.Logger) *g
 
 	// Initialize services
 	userService := service.NewUserService(db, cfg)
-	
+
 	// Try to load JWT secret from database if it exists
 	_ = userService.LoadJWTSecret()
 
@@ -78,8 +80,8 @@ func NewRouter(cfg *config.Config, db *database.Database, logger *zap.Logger) *g
 
 	// Serve static frontend files
 	router.Static("/assets", "./static/assets")
-	router.StaticFile("/favicon.ico", "./static/favicon.ico")
-	router.StaticFile("/vite.svg", "./static/vite.svg")
+	// router.StaticFile("/favicon.ico", "./static/favicon.ico")
+	// router.StaticFile("/vite.svg", "./static/vite.svg")
 
 	// SPA fallback - serve index.html for all other routes
 	router.NoRoute(func(c *gin.Context) {

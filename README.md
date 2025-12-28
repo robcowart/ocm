@@ -12,17 +12,16 @@ A secure, containerized PKI certificate management system for creating and manag
 - **Flexible Database**: Support for both SQLite (embedded) and PostgreSQL
 - **Docker Support**: Runs in a single container for easy deployment
 - **Authentication**: JWT-based authentication with bcrypt password hashing
-- **Comprehensive Logging**: Structured logging with Zap
 
 ## Quick Start
 
 ### Using Docker Compose (Recommended)
 
-#### SQLite (Single Container)
+#### SQLite (Default)
 
 ```bash
-# Build and start the service
-docker-compose up -d ocm-sqlite
+# Build and start the service with SQLite
+docker-compose up -d ocm
 
 # Access the web interface
 open http://localhost:8080
@@ -30,26 +29,35 @@ open http://localhost:8080
 
 #### PostgreSQL
 
+To use PostgreSQL instead:
+
+1. Edit `docker-compose.yml`:
+   - Comment out the SQLite configuration lines
+   - Uncomment the PostgreSQL configuration lines
+   - Uncomment the `depends_on` section
+
+2. Start the services:
+
 ```bash
-# Build and start the service with PostgreSQL
-docker-compose up -d ocm-postgres postgres
+# Build and start both OCM and PostgreSQL
+docker-compose --profile postgres up -d
 
 # Access the web interface
-open http://localhost:8081
+open http://localhost:8080
 ```
 
 ### Using Docker Manually
 
 ```bash
 # Build the image
-docker build -t ocm-cert-manager:latest .
+docker build -t ocm:latest .
 
 # Run with SQLite
 docker run -d \
   -p 8080:8080 \
   -v ocm-data:/app/data \
   --name ocm \
-  ocm-cert-manager:latest
+  ocm:latest
 ```
 
 ### Local Development
@@ -70,7 +78,7 @@ go mod download
 mkdir -p data
 
 # Run the backend
-go run ./cmd/server
+go run ./cmd/ocm
 ```
 
 #### Frontend Setup
@@ -149,6 +157,101 @@ From the Certificates page:
 
 ## Configuration
 
+The application can be configured in three ways, with the following priority (highest to lowest):
+
+1. **Command line flags** (highest priority)
+2. **Environment variables** (`OCM_*`)
+3. **Configuration file** (`config.yaml`, lowest priority)
+
+### Command Line Flags
+
+All configuration options can be set via command line flags. Use `--help` to see all available options:
+
+```bash
+./ocm --help
+./ocm --version
+```
+
+#### Common Usage Examples
+
+```bash
+# Use a custom configuration file
+./ocm --config /etc/ocm/config.yaml
+
+# Development mode with debug logging
+./ocm --server.port 9090 --log.level debug
+
+# Production with PostgreSQL
+./ocm --db.type postgres \
+  --db.postgres.host db.example.com \
+  --db.postgres.database ocm \
+  --db.postgres.user ocm \
+  --db.postgres.password secret
+
+# Enable TLS/HTTPS
+./ocm --server.tls-enabled \
+  --server.tls-cert /path/to/cert.pem \
+  --server.tls-key /path/to/key.pem
+
+# Testing with isolated database
+./ocm --db.sqlite.path /tmp/test.db \
+  --server.port 8888 \
+  --log.level debug
+```
+
+#### Available Flags
+
+**General:**
+- `-c, --config` - Path to configuration file (default: `config.yaml`)
+- `-v, --version` - Print version and exit
+
+**Server:**
+- `--server.port` - HTTP server port (default: 8080)
+- `--server.host` - Bind address (default: 0.0.0.0)
+- `--server.read-timeout` - Read timeout (e.g., 30s)
+- `--server.write-timeout` - Write timeout (e.g., 30s)
+- `--server.tls-enabled` - Enable HTTPS
+- `--server.tls-cert` - Path to TLS certificate
+- `--server.tls-key` - Path to TLS key
+
+**Database:**
+- `--db.type` - Database type (sqlite or postgres)
+- `--db.sqlite.path` - SQLite database file path
+- `--db.postgres.host` - PostgreSQL host
+- `--db.postgres.port` - PostgreSQL port (default: 5432)
+- `--db.postgres.database` - PostgreSQL database name
+- `--db.postgres.user` - PostgreSQL username
+- `--db.postgres.password` - PostgreSQL password
+- `--db.postgres.ssl-mode` - SSL mode (disable, require, verify-ca, verify-full)
+- `--db.postgres.max-open-conns` - Max open connections (default: 25)
+- `--db.postgres.max-idle-conns` - Max idle connections (default: 5)
+
+**JWT:**
+- `--jwt.secret` - JWT signing secret (auto-generated if not provided)
+- `--jwt.expiration` - Token expiration (e.g., 24h)
+- `--jwt.issuer` - JWT issuer (default: ocm)
+
+**Cryptography:**
+- `--crypto.default-algorithm` - Default algorithm (rsa or ecdsa)
+- `--crypto.default-ca-validity` - CA validity period (e.g., 87600h = 10 years)
+- `--crypto.default-cert-validity` - Certificate validity (e.g., 8760h = 1 year)
+- `--crypto.default-rsa-bits` - RSA key size (2048 or 4096)
+- `--crypto.default-ec-curve` - EC curve (P256 or P384)
+
+**Logging:**
+- `-l, --log.level` - Log level (debug, info, warn, error)
+- `--log.format` - Log format (json or console)
+- `--log.output` - Log output (stdout or file path)
+
+**Security:**
+- `--security.cors-enabled` - Enable CORS
+- `--security.cors-origins` - CORS allowed origins (repeatable flag)
+- `--security.rate-limit-enabled` - Enable rate limiting
+- `--security.rate-limit-requests` - Requests per window (default: 100)
+- `--security.rate-limit-window` - Window duration (e.g., 1m)
+
+### Configuration File
+
 The application is configured via `config.yaml`:
 
 ```yaml
@@ -174,7 +277,7 @@ database:
 jwt:
   secret: ""                    # Auto-generated on first run
   expiration: 24h
-  issuer: ocm-cert-manager
+  issuer: ocm
 
 crypto:
   default_ca_validity: 87600h   # 10 years
@@ -200,14 +303,40 @@ security:
 
 ### Environment Variable Overrides
 
-Configuration can be overridden with environment variables:
+Configuration can be overridden with environment variables (takes precedence over config file but not command line flags):
 
 ```bash
-OCM_SERVER_PORT=9000
-OCM_DB_TYPE=postgres
-OCM_DB_POSTGRES_HOST=db.example.com
-OCM_DB_POSTGRES_PASSWORD=secure_password
-OCM_LOG_LEVEL=debug
+export OCM_SERVER_PORT=9000
+export OCM_DB_TYPE=postgres
+export OCM_DB_POSTGRES_HOST=db.example.com
+export OCM_DB_POSTGRES_PASSWORD=secure_password
+export OCM_LOG_LEVEL=debug
+
+./ocm
+```
+
+Environment variables use the `OCM_` prefix followed by the config path in uppercase with underscores (e.g., `OCM_SERVER_PORT`, `OCM_DB_POSTGRES_HOST`).
+
+### Docker with Configuration
+
+When running in Docker, you can pass flags to the container or use environment variables:
+
+```bash
+# Using command line flags
+docker run -d \
+  -p 9090:9090 \
+  -v ocm-data:/app/data \
+  ocm:latest \
+  --server.port 9090 \
+  --log.level debug
+
+# Using environment variables
+docker run -d \
+  -p 8080:8080 \
+  -e OCM_SERVER_PORT=8080 \
+  -e OCM_LOG_LEVEL=debug \
+  -v ocm-data:/app/data \
+  ocm:latest
 ```
 
 ## Security Best Practices
@@ -258,6 +387,8 @@ The application exposes a RESTful API:
 - `GET /api/v1/authorities/:id` - Get specific CA
 - `POST /api/v1/authorities` - Create Root CA
 - `POST /api/v1/authorities/import` - Import existing CA
+- `POST /api/v1/authorities/:id/export` - Export CA certificate and key
+- `DELETE /api/v1/authorities/:id` - Delete CA
 
 ### Certificates
 
@@ -266,6 +397,7 @@ The application exposes a RESTful API:
 - `POST /api/v1/certificates` - Create certificate
 - `POST /api/v1/certificates/:id/export` - Export certificate
 - `PUT /api/v1/certificates/:id/revoke` - Revoke certificate
+- `DELETE /api/v1/certificates/:id` - Delete certificate
 
 All authenticated endpoints require `Authorization: Bearer <token>` header.
 
@@ -296,23 +428,24 @@ npm run build
 
 ```bash
 # Build
-docker build -t ocm-cert-manager:latest .
+docker build -t ocm:latest .
 
 # Run
-docker run -p 8080:8080 -v ocm-data:/app/data ocm-cert-manager:latest
+docker run -p 8080:8080 -v ocm-data:/app/data ocm:latest
 ```
 
 ## Makefile Commands
 
 ```bash
 make build           # Build Go binary
-make run             # Run locally
+make build-all       # Build everything (frontend + backend + docker image)
 make test            # Run tests
 make clean           # Clean build artifacts
 make docker-build    # Build Docker image
-make docker-run      # Run Docker container (SQLite)
 make frontend-build  # Build frontend only
 make frontend-dev    # Run frontend dev server
+make deps            # Install Go dependencies
+make frontend-deps   # Install frontend dependencies
 ```
 
 ## Troubleshooting
@@ -397,11 +530,11 @@ Contributions are welcome! Please:
 
 ## Support
 
-For issues, questions, or feature requests, please open an issue on GitHub.
+For issues, questions, or feature requests, please open an issue.
 
 ## Roadmap
 
-Future enhancements planned:
+Future enhancements which may be implemented:
 
 - Intermediate CAs (3-tier hierarchy)
 - Certificate Revocation Lists (CRL)
@@ -411,9 +544,10 @@ Future enhancements planned:
 - HSM integration
 - Audit logging
 - Webhook notifications
-- Certificate templates
 - Bulk operations
 
 ---
 
-**⚠️ Security Notice**: This application manages cryptographic material and should be deployed in a secure environment. Always use HTTPS in production, secure your master key, and follow security best practices.
+### WARNING
+
+This application manages cryptographic material and should be deployed in a secure environment. Always use HTTPS in production, secure your master key, and follow security best practices.

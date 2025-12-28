@@ -46,7 +46,7 @@ export default function LoginForm() {
           className="absolute inset-0 bg-cover bg-center bg-no-repeat" 
           style={{ backgroundImage: `url(${encryptionBg})` }}
         />
-        <div className="absolute inset-0 bg-black/85" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/90 to-black/50" />
         <div className="relative z-20 flex items-center text-2xl font-medium">
           <Shield className="mr-3 h-10 w-10" />
           Open Certificate Manager

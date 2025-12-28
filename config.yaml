@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8000
   host: 0.0.0.0
   read_timeout: 30s
   write_timeout: 30s
@@ -24,7 +24,7 @@ database:
 jwt:
   secret: ""  # Generated on first run if empty
   expiration: 24h
-  issuer: ocm-cert-manager
+  issuer: ocm
 
 crypto:
   default_ca_validity: 87600h  # 10 years
@@ -42,7 +42,7 @@ security:
   cors_enabled: true
   cors_origins:
     - http://localhost:3000
-    - http://localhost:8080
+    - http://localhost:8000
   rate_limit_enabled: true
   rate_limit_requests: 100
   rate_limit_window: 1m

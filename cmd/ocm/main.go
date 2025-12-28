@@ -17,8 +17,17 @@ import (
 )
 
 func main() {
+	// Parse command line flags
+	flags, configFile, showVersion := config.ParseFlags()
+
+	// Handle version flag
+	if showVersion {
+		fmt.Println("Open Certificate Manager (OCM) v0.0.1")
+		os.Exit(0)
+	}
+
 	// Load configuration
-	cfg, err := config.Load("config.yaml")
+	cfg, err := config.Load(configFile, flags)
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
@@ -31,7 +40,7 @@ func main() {
 	defer logger.Sync()
 
 	logger.Info("Starting Open Certificate Manager (OCM)",
-		zap.String("version", "1.0.0"),
+		zap.String("version", "0.0.1"),
 		zap.String("database", cfg.Database.Type),
 	)
 

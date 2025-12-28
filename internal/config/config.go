@@ -91,26 +91,88 @@ type SecurityConfig struct {
 }
 
 // Load reads and parses the configuration file
-func Load(path string) (*Config, error) {
+func Load(path string, flags interface{}) (*Config, error) {
+	// Initialize with defaults
+	cfg := &Config{}
+
+	// Try to load config file (it's optional if using defaults/flags)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+		if !os.IsNotExist(err) {
+			// File exists but can't be read (permissions, etc)
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+		// Config file doesn't exist, use defaults
+		cfg = defaultConfig()
+	} else {
+		// Parse config file
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse config file: %w", err)
+		}
 	}
 
 	// Apply environment variable overrides
 	cfg.applyEnvOverrides()
+
+	// Apply command line flag overrides
+	if flags != nil {
+		cfg.applyFlagOverrides(flags)
+	}
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	return &cfg, nil
+	return cfg, nil
+}
+
+// defaultConfig returns a Config with sensible defaults
+func defaultConfig() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Port:         8000,
+			Host:         "0.0.0.0",
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			TLSEnabled:   false,
+		},
+		Database: DatabaseConfig{
+			Type: "sqlite",
+			SQLite: SQLiteConfig{
+				Path: "./data/ocm.db",
+			},
+			Postgres: PostgresConfig{
+				Port:         5432,
+				SSLMode:      "disable",
+				MaxOpenConns: 25,
+				MaxIdleConns: 5,
+			},
+		},
+		JWT: JWTConfig{
+			Expiration: 24 * time.Hour,
+			Issuer:     "ocm",
+		},
+		Crypto: CryptoConfig{
+			DefaultCAValidity:   87600 * time.Hour, // 10 years
+			DefaultCertValidity: 8760 * time.Hour,  // 1 year
+			DefaultAlgorithm:    "rsa",
+			DefaultRSABits:      2048,
+			DefaultECCurve:      "P256",
+		},
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "json",
+			Output: "stdout",
+		},
+		Security: SecurityConfig{
+			CORSEnabled:       true,
+			CORSOrigins:       []string{"http://localhost:3000", "http://localhost:8000"},
+			RateLimitEnabled:  true,
+			RateLimitRequests: 100,
+			RateLimitWindow:   "1m",
+		},
+	}
 }
 
 // applyEnvOverrides applies environment variable overrides to the configuration
@@ -158,6 +220,172 @@ func (c *Config) applyEnvOverrides() {
 	// Logging overrides
 	if logLevel := os.Getenv("OCM_LOG_LEVEL"); logLevel != "" {
 		c.Logging.Level = logLevel
+	}
+}
+
+// FlagOverrides defines the interface for command line flag overrides
+type FlagOverrides interface {
+	GetServerPort() (int, bool)
+	GetServerHost() (string, bool)
+	GetServerReadTimeout() (string, bool)
+	GetServerWriteTimeout() (string, bool)
+	GetServerTLSEnabled() (bool, bool)
+	GetServerTLSCert() (string, bool)
+	GetServerTLSKey() (string, bool)
+	GetDBType() (string, bool)
+	GetDBSQLitePath() (string, bool)
+	GetDBPostgresHost() (string, bool)
+	GetDBPostgresPort() (int, bool)
+	GetDBPostgresDatabase() (string, bool)
+	GetDBPostgresUser() (string, bool)
+	GetDBPostgresPassword() (string, bool)
+	GetDBPostgresSSLMode() (string, bool)
+	GetDBPostgresMaxOpenConns() (int, bool)
+	GetDBPostgresMaxIdleConns() (int, bool)
+	GetJWTSecret() (string, bool)
+	GetJWTExpiration() (string, bool)
+	GetJWTIssuer() (string, bool)
+	GetCryptoDefaultCAValidity() (string, bool)
+	GetCryptoDefaultCertValidity() (string, bool)
+	GetCryptoDefaultAlgorithm() (string, bool)
+	GetCryptoDefaultRSABits() (int, bool)
+	GetCryptoDefaultECCurve() (string, bool)
+	GetLogLevel() (string, bool)
+	GetLogFormat() (string, bool)
+	GetLogOutput() (string, bool)
+	GetSecurityCORSEnabled() (bool, bool)
+	GetSecurityCORSOrigins() ([]string, bool)
+	GetSecurityRateLimitEnabled() (bool, bool)
+	GetSecurityRateLimitRequests() (int, bool)
+	GetSecurityRateLimitWindow() (string, bool)
+}
+
+// applyFlagOverrides applies command line flag overrides to the configuration
+func (c *Config) applyFlagOverrides(flags interface{}) {
+	fo, ok := flags.(FlagOverrides)
+	if !ok {
+		return
+	}
+
+	// Server overrides
+	if port, set := fo.GetServerPort(); set && port > 0 {
+		c.Server.Port = port
+	}
+	if host, set := fo.GetServerHost(); set && host != "" {
+		c.Server.Host = host
+	}
+	if timeout, set := fo.GetServerReadTimeout(); set && timeout != "" {
+		if d, err := time.ParseDuration(timeout); err == nil {
+			c.Server.ReadTimeout = d
+		}
+	}
+	if timeout, set := fo.GetServerWriteTimeout(); set && timeout != "" {
+		if d, err := time.ParseDuration(timeout); err == nil {
+			c.Server.WriteTimeout = d
+		}
+	}
+	if enabled, set := fo.GetServerTLSEnabled(); set {
+		c.Server.TLSEnabled = enabled
+	}
+	if cert, set := fo.GetServerTLSCert(); set && cert != "" {
+		c.Server.TLSCert = cert
+	}
+	if key, set := fo.GetServerTLSKey(); set && key != "" {
+		c.Server.TLSKey = key
+	}
+
+	// Database overrides
+	if dbType, set := fo.GetDBType(); set && dbType != "" {
+		c.Database.Type = dbType
+	}
+	if path, set := fo.GetDBSQLitePath(); set && path != "" {
+		c.Database.SQLite.Path = path
+	}
+	if host, set := fo.GetDBPostgresHost(); set && host != "" {
+		c.Database.Postgres.Host = host
+	}
+	if port, set := fo.GetDBPostgresPort(); set && port > 0 {
+		c.Database.Postgres.Port = port
+	}
+	if database, set := fo.GetDBPostgresDatabase(); set && database != "" {
+		c.Database.Postgres.Database = database
+	}
+	if user, set := fo.GetDBPostgresUser(); set && user != "" {
+		c.Database.Postgres.User = user
+	}
+	if password, set := fo.GetDBPostgresPassword(); set && password != "" {
+		c.Database.Postgres.Password = password
+	}
+	if sslMode, set := fo.GetDBPostgresSSLMode(); set && sslMode != "" {
+		c.Database.Postgres.SSLMode = sslMode
+	}
+	if maxOpen, set := fo.GetDBPostgresMaxOpenConns(); set && maxOpen > 0 {
+		c.Database.Postgres.MaxOpenConns = maxOpen
+	}
+	if maxIdle, set := fo.GetDBPostgresMaxIdleConns(); set && maxIdle > 0 {
+		c.Database.Postgres.MaxIdleConns = maxIdle
+	}
+
+	// JWT overrides
+	if secret, set := fo.GetJWTSecret(); set && secret != "" {
+		c.JWT.Secret = secret
+	}
+	if expiration, set := fo.GetJWTExpiration(); set && expiration != "" {
+		if d, err := time.ParseDuration(expiration); err == nil {
+			c.JWT.Expiration = d
+		}
+	}
+	if issuer, set := fo.GetJWTIssuer(); set && issuer != "" {
+		c.JWT.Issuer = issuer
+	}
+
+	// Crypto overrides
+	if validity, set := fo.GetCryptoDefaultCAValidity(); set && validity != "" {
+		if d, err := time.ParseDuration(validity); err == nil {
+			c.Crypto.DefaultCAValidity = d
+		}
+	}
+	if validity, set := fo.GetCryptoDefaultCertValidity(); set && validity != "" {
+		if d, err := time.ParseDuration(validity); err == nil {
+			c.Crypto.DefaultCertValidity = d
+		}
+	}
+	if algo, set := fo.GetCryptoDefaultAlgorithm(); set && algo != "" {
+		c.Crypto.DefaultAlgorithm = algo
+	}
+	if bits, set := fo.GetCryptoDefaultRSABits(); set && bits > 0 {
+		c.Crypto.DefaultRSABits = bits
+	}
+	if curve, set := fo.GetCryptoDefaultECCurve(); set && curve != "" {
+		c.Crypto.DefaultECCurve = curve
+	}
+
+	// Logging overrides
+	if level, set := fo.GetLogLevel(); set && level != "" {
+		c.Logging.Level = level
+	}
+	if format, set := fo.GetLogFormat(); set && format != "" {
+		c.Logging.Format = format
+	}
+	if output, set := fo.GetLogOutput(); set && output != "" {
+		c.Logging.Output = output
+	}
+
+	// Security overrides
+	if enabled, set := fo.GetSecurityCORSEnabled(); set {
+		c.Security.CORSEnabled = enabled
+	}
+	if origins, set := fo.GetSecurityCORSOrigins(); set && len(origins) > 0 {
+		c.Security.CORSOrigins = origins
+	}
+	if enabled, set := fo.GetSecurityRateLimitEnabled(); set {
+		c.Security.RateLimitEnabled = enabled
+	}
+	if requests, set := fo.GetSecurityRateLimitRequests(); set && requests > 0 {
+		c.Security.RateLimitRequests = requests
+	}
+	if window, set := fo.GetSecurityRateLimitWindow(); set && window != "" {
+		c.Security.RateLimitWindow = window
 	}
 }
 

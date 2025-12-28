@@ -1,15 +1,11 @@
-.PHONY: build run test clean docker-build docker-run frontend-build frontend-dev deps build-all
+.PHONY: build test clean docker-build frontend-build frontend-dev frontend-deps deps build-all
 
 # Build the Go binary
 build:
 	CGO_ENABLED=1 go build -o ocm ./cmd/ocm
 
 # Build everything (frontend + backend)
-build-all: frontend-build build
-
-# Run locally (requires config.yaml)
-run: build
-	./ocm
+build-all: frontend-build build docker-build
 
 # Run tests
 test:
@@ -23,15 +19,7 @@ clean:
 
 # Build Docker image
 docker-build:
-	docker build -t ocm-cert-manager:latest .
-
-# Run Docker container with SQLite
-docker-run:
-	docker run -d \
-		-p 8080:8080 \
-		-v ocm-data:/app/data \
-		--name ocm \
-		ocm-cert-manager:latest
+	docker build -t ocm:latest .
 
 # Build frontend only
 frontend-build:
@@ -52,11 +40,3 @@ deps:
 # Install frontend dependencies
 frontend-deps:
 	cd frontend && npm install
-
-# Initialize database directory
-init-db:
-	mkdir -p data
-
-# Development mode (run backend and frontend separately)
-dev: init-db
-	@echo "Run 'make run' in one terminal and 'make frontend-dev' in another"
