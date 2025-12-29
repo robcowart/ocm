@@ -646,8 +646,3 @@ Future enhancements which may be implemented:
 ### WARNING
 
 This application manages cryptographic material and should be deployed in a secure environment. Always use HTTPS in production, secure your master key, and follow security best practices.
-
-![image](./assets/ocm_ca2.png)
-
-
-![image](./assets/ocm_login.png)
