@@ -60,15 +60,15 @@ docker run -d \
   ocm:latest
 ```
 
-### Local Development
+## Local Development
 
-#### Prerequisites
+### Prerequisites
 
 - Go 1.22 or higher
 - Node.js 20 or higher
 - Make (optional, for convenience commands)
 
-#### Backend Setup
+### Backend Setup
 
 ```bash
 # Install Go dependencies
@@ -81,7 +81,7 @@ mkdir -p data
 go run ./cmd/ocm
 ```
 
-#### Frontend Setup
+### Frontend Setup
 
 ```bash
 # Navigate to frontend directory
@@ -101,10 +101,18 @@ The frontend dev server will proxy API requests to the backend at `http://localh
 1. **Initial Access**: Navigate to `http://localhost:8000`
 2. **Setup Wizard**: On first run, you'll be guided through initial setup
 3. **Create Admin Account**: Choose a username and strong password
+
+   ![image](./assets/ocm_init1.png)
+
 4. **Master Key**: The system will generate a master encryption key
    - **CRITICAL**: Save this key securely! It encrypts all private keys in the database
    - If lost, you cannot decrypt your certificates
+
+   ![image](./assets/ocm_init2.png)
+
 5. **Complete Setup**: You'll be automatically logged in to the dashboard
+
+   ![image](./assets/ocm_dashboard_init.png)
 
 ## Usage
 
@@ -117,6 +125,9 @@ The frontend dev server will proxy API requests to the backend at `http://localh
    - **Common Name**: The CA's common name (e.g., "My Organization Root CA")
    - **Organization**: Your organization name
    - **Country**: Two-letter country code (e.g., "US")
+
+   ![image](./assets/ocm_create_ca.png)
+
 4. Click **Create**
 
 The CA will be generated with:
@@ -125,10 +136,15 @@ The CA will be generated with:
 - 10-year validity period
 - Self-signed certificate
 
+  ![image](./assets/ocm_ca.png)
+
 ### Creating a Certificate
 
 1. Navigate to **Certificates**
 2. Click **Create Certificate**
+
+   ![image](./assets/ocm_create_cert.png)
+
 3. Select the **Certificate Authority** to sign the certificate
 4. Enter the **Common Name** (e.g., `example.com`)
 5. Add **Subject Alternative Names** (optional):
@@ -142,18 +158,29 @@ The certificate will be generated with:
 - 1-year validity period
 - Server authentication enabled
 
+  ![image](./assets/ocm_certificates.png)
+
+> NOTE: If you need to create multiple similar certificates, use the Clone feature. Most of the fields will be inherited from the cloned certificate, and you can quickly edit only those fields that need to be changed.
+
+![image](./assets/ocm_dashboard.png)
+
 ### Exporting Certificates
 
-From the Certificates page:
+From the Certificates page, find your certificate. Click Export:
 
-1. Find your certificate
-2. Click **Export PEM** for:
-   - Linux/Unix systems (Nginx, Apache, HAProxy)
-   - Includes certificate, CA chain, and private key
-3. Click **Export PFX** for:
-   - Windows systems
-   - Java applications (Tomcat, Java KeyStore)
-   - Password-protected PKCS#12 format
+  ![image](./assets/ocm_export_certs.png)
+
+- Select **Export PEM** for:
+  - Linux/Unix systems (Nginx, Apache, HAProxy)
+  - Includes certificate, CA chain, and private key in a single file
+- Select **Export PEM (Split Files)** for:
+  - Linux/Unix systems requiring separate files
+  - Exports as a ZIP archive containing separate certificate and private key files
+  - Useful for applications that require distinct cert/key files
+- Select **Export PFX/PKCS#12** for:
+  - Windows systems (IIS, Microsoft services)
+  - Java applications (Tomcat, Java KeyStore)
+  - Password-protected PKCS#12 format
 
 ## Configuration
 
@@ -619,3 +646,8 @@ Future enhancements which may be implemented:
 ### WARNING
 
 This application manages cryptographic material and should be deployed in a secure environment. Always use HTTPS in production, secure your master key, and follow security best practices.
+
+![image](./assets/ocm_ca2.png)
+
+
+![image](./assets/ocm_login.png)
