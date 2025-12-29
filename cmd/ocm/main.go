@@ -17,12 +17,14 @@ import (
 )
 
 func main() {
+	version := "0.0.2"
+
 	// Parse command line flags
 	flags, configFile, showVersion := config.ParseFlags()
 
 	// Handle version flag
 	if showVersion {
-		fmt.Println("Open Certificate Manager (OCM) v0.0.1")
+		fmt.Println("Open Certificate Manager (OCM) v", version)
 		os.Exit(0)
 	}
 
@@ -40,7 +42,7 @@ func main() {
 	defer logger.Sync()
 
 	logger.Info("Starting Open Certificate Manager (OCM)",
-		zap.String("version", "0.0.1"),
+		zap.String("version", version),
 		zap.String("database", cfg.Database.Type),
 	)
 
