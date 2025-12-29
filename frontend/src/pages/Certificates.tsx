@@ -384,7 +384,7 @@ export default function Certificates() {
     <SidebarLayout>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Certificates</h1>
-        <Button onClick={() => setIsCreateOpen(true)}>
+        <Button variant="outline" onClick={() => setIsCreateOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Create Certificate
         </Button>

@@ -16,12 +16,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Trash2, Download } from 'lucide-react'
+import { Plus, Trash2, Download, Upload, FileText, FolderOpen } from 'lucide-react'
 import SidebarLayout from '@/components/layout/SidebarLayout'
 import apiClient from '@/lib/api'
 
 export default function Authorities() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const [isImportFromFileOpen, setIsImportFromFileOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [friendlyName, setFriendlyName] = useState('')
@@ -35,6 +37,14 @@ export default function Authorities() {
   const [rsaBits, setRsaBits] = useState('4096')
   const [ecCurve, setEcCurve] = useState('P384')
   const [validityYears, setValidityYears] = useState('10')
+  const [importFriendlyName, setImportFriendlyName] = useState('')
+  const [importCertificatePEM, setImportCertificatePEM] = useState('')
+  const [importPrivateKeyPEM, setImportPrivateKeyPEM] = useState('')
+  const [importPassword, setImportPassword] = useState('')
+  const [importFileType, setImportFileType] = useState<'pem_single' | 'pem_separate'>('pem_single')
+  const [selectedCertFile, setSelectedCertFile] = useState<File | null>(null)
+  const [selectedKeyFile, setSelectedKeyFile] = useState<File | null>(null)
+  const [selectedPemFile, setSelectedPemFile] = useState<File | null>(null)
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
@@ -58,6 +68,26 @@ export default function Authorities() {
       toast({
         title: "Error",
         description: error.response?.data?.error || "Failed to create CA",
+        variant: "destructive",
+      })
+    },
+  })
+
+  const importMutation = useMutation({
+    mutationFn: (data: any) => apiClient.importCA(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['authorities'] })
+      setIsImportOpen(false)
+      resetImportForm()
+      toast({
+        title: "Success",
+        description: "CA imported successfully",
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to import CA",
         variant: "destructive",
       })
     },
@@ -97,6 +127,38 @@ export default function Authorities() {
     setValidityYears('10')
   }
 
+  const resetImportForm = () => {
+    setImportFriendlyName('')
+    setImportCertificatePEM('')
+    setImportPrivateKeyPEM('')
+    setImportPassword('')
+  }
+
+  const resetFileImportForm = () => {
+    setImportFriendlyName('')
+    setImportPassword('')
+    setImportFileType('pem_single')
+    setSelectedCertFile(null)
+    setSelectedKeyFile(null)
+    setSelectedPemFile(null)
+  }
+
+  const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target?.result as string)
+      reader.onerror = reject
+      reader.readAsText(file)
+    })
+  }
+
+  const parsePemFile = (content: string) => {
+    // Extract certificate and private key from single PEM file
+    const certMatch = content.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)
+    const keyMatch = content.match(/-----BEGIN (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----/)
+    return { cert: certMatch?.[0] || '', key: keyMatch?.[0] || '' }
+  }
+
   const handleCreate = () => {
     const validityDays = parseInt(validityYears) * 365
     createMutation.mutate({
@@ -112,6 +174,65 @@ export default function Authorities() {
       ec_curve: algorithm === 'ecdsa' ? ecCurve : '',
       validity_days: validityDays,
     })
+  }
+
+  const handleImport = () => {
+    importMutation.mutate({
+      friendly_name: importFriendlyName,
+      certificate_pem: importCertificatePEM,
+      private_key_pem: importPrivateKeyPEM,
+      password: importPassword,
+    })
+  }
+
+  const handleFileImport = async () => {
+    try {
+      let certPem = ''
+      let keyPem = ''
+
+      if (importFileType === 'pem_single' && selectedPemFile) {
+        const content = await readFileAsText(selectedPemFile)
+        const parsed = parsePemFile(content)
+        certPem = parsed.cert
+        keyPem = parsed.key
+        
+        if (!certPem || !keyPem) {
+          toast({
+            title: "Error",
+            description: "Could not find both certificate and private key in the file",
+            variant: "destructive",
+          })
+          return
+        }
+      } else if (importFileType === 'pem_separate') {
+        if (!selectedCertFile || !selectedKeyFile) {
+          toast({
+            title: "Error",
+            description: "Please select both certificate and private key files",
+            variant: "destructive",
+          })
+          return
+        }
+        certPem = await readFileAsText(selectedCertFile)
+        keyPem = await readFileAsText(selectedKeyFile)
+      }
+
+      importMutation.mutate({
+        friendly_name: importFriendlyName,
+        certificate_pem: certPem,
+        private_key_pem: keyPem,
+        password: importPassword,
+      })
+
+      setIsImportFromFileOpen(false)
+      resetFileImportForm()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to read file",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleDelete = () => {
@@ -170,10 +291,30 @@ export default function Authorities() {
     <SidebarLayout>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Certificate Authorities</h1>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Root CA
-        </Button>
+        <div className="flex gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Import CA
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => setIsImportOpen(true)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Import from Text
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsImportFromFileOpen(true)}>
+                <FolderOpen className="h-4 w-4 mr-2" />
+                Import from File
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Root CA
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -390,6 +531,206 @@ export default function Authorities() {
               disabled={!friendlyName || !commonName || createMutation.isPending}
             >
               {createMutation.isPending ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Certificate Authority</DialogTitle>
+            <DialogDescription>
+              Import an existing CA certificate and private key
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="import_friendly_name">Friendly Name *</Label>
+              <Input
+                id="import_friendly_name"
+                placeholder="Imported CA"
+                value={importFriendlyName}
+                onChange={(e) => setImportFriendlyName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import_certificate_pem">Certificate (PEM format) *</Label>
+              <textarea
+                id="import_certificate_pem"
+                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+                value={importCertificatePEM}
+                onChange={(e) => setImportCertificatePEM(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Paste the PEM-encoded certificate
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import_private_key_pem">Private Key (PEM format) *</Label>
+              <textarea
+                id="import_private_key_pem"
+                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----"
+                value={importPrivateKeyPEM}
+                onChange={(e) => setImportPrivateKeyPEM(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Paste the PEM-encoded private key
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="import_password">Password (if encrypted)</Label>
+              <Input
+                id="import_password"
+                type="password"
+                placeholder="Optional password for encrypted private key"
+                value={importPassword}
+                onChange={(e) => setImportPassword(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty if the private key is not encrypted
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsImportOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleImport}
+              disabled={!importFriendlyName || !importCertificatePEM || !importPrivateKeyPEM || importMutation.isPending}
+            >
+              {importMutation.isPending ? "Importing..." : "Import"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isImportFromFileOpen} onOpenChange={setIsImportFromFileOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import CA from File</DialogTitle>
+            <DialogDescription>
+              Import an existing CA certificate and private key from file(s)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="file_import_friendly_name">Friendly Name *</Label>
+              <Input
+                id="file_import_friendly_name"
+                placeholder="Imported CA"
+                value={importFriendlyName}
+                onChange={(e) => setImportFriendlyName(e.target.value)}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>File Format *</Label>
+              <Select value={importFileType} onValueChange={(value: any) => setImportFileType(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pem_single">Single PEM file (certificate + key)</SelectItem>
+                  <SelectItem value="pem_separate">Separate PEM files</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {importFileType === 'pem_single' && (
+              <div className="space-y-2">
+                <Label htmlFor="pem_file">PEM File *</Label>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    id="pem_file"
+                    type="file"
+                    accept=".pem,.crt,.cer,.key"
+                    onChange={(e) => setSelectedPemFile(e.target.files?.[0] || null)}
+                    className="cursor-pointer"
+                  />
+                </div>
+                {selectedPemFile && (
+                  <p className="text-xs text-muted-foreground">
+                    Selected: {selectedPemFile.name}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  File should contain both the certificate and private key
+                </p>
+              </div>
+            )}
+
+            {importFileType === 'pem_separate' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="cert_file">Certificate File *</Label>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      id="cert_file"
+                      type="file"
+                      accept=".pem,.crt,.cer"
+                      onChange={(e) => setSelectedCertFile(e.target.files?.[0] || null)}
+                      className="cursor-pointer"
+                    />
+                  </div>
+                  {selectedCertFile && (
+                    <p className="text-xs text-muted-foreground">
+                      Selected: {selectedCertFile.name}
+                    </p>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="key_file">Private Key File *</Label>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      id="key_file"
+                      type="file"
+                      accept=".pem,.key"
+                      onChange={(e) => setSelectedKeyFile(e.target.files?.[0] || null)}
+                      className="cursor-pointer"
+                    />
+                  </div>
+                  {selectedKeyFile && (
+                    <p className="text-xs text-muted-foreground">
+                      Selected: {selectedKeyFile.name}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="file_import_password">Password (if encrypted)</Label>
+              <Input
+                id="file_import_password"
+                type="password"
+                placeholder="Optional password for encrypted private key"
+                value={importPassword}
+                onChange={(e) => setImportPassword(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty if the private key is not encrypted
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsImportFromFileOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleFileImport}
+              disabled={
+                !importFriendlyName || 
+                (importFileType === 'pem_single' && !selectedPemFile) ||
+                (importFileType === 'pem_separate' && (!selectedCertFile || !selectedKeyFile)) ||
+                importMutation.isPending
+              }
+            >
+              {importMutation.isPending ? "Importing..." : "Import"}
             </Button>
           </DialogFooter>
         </DialogContent>
