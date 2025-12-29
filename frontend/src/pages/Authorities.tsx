@@ -11,8 +11,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
@@ -248,17 +246,17 @@ export default function Authorities() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      const extension = format === 'pkcs12' ? 'pfx' : format
-      const suffix = certOnly ? '_cert' : '_CA'
+      const extension = format === 'pkcs12' ? 'pfx' : 'pem'
+      const suffix = certOnly ? '_cert' : ''
       a.download = `${authority.friendly_name.replace(/\s/g, '_')}${suffix}.${extension}`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
-      const exportType = certOnly ? 'certificate only' : 'CA with private key'
+      const exportType = certOnly ? 'certificate only' : (format === 'pkcs12' ? 'PFX/PKCS#12' : 'PEM')
       toast({
         title: "Success",
-        description: `CA exported as ${format.toUpperCase()} (${exportType})`,
+        description: `CA exported as ${exportType}`,
       })
     } catch (error: any) {
       toast({
@@ -350,17 +348,14 @@ export default function Authorities() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent>
-                        <DropdownMenuLabel>CA with Private Key</DropdownMenuLabel>
                         <DropdownMenuItem onClick={() => handleExportAuthority(authority, 'pem', false)}>
                           Export as PEM
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleExportAuthority(authority, 'pkcs12', false)}>
-                          Export as PFX
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuLabel>Certificate Only</DropdownMenuLabel>
                         <DropdownMenuItem onClick={() => handleExportAuthority(authority, 'pem', true)}>
                           Export as PEM (cert only)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportAuthority(authority, 'pkcs12', false)}>
+                          Export as PFX/PKCS#12
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
