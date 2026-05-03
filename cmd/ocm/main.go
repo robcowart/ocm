@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	version := "0.0.2"
+	version := "0.0.3"
 
 	// Parse command line flags
 	flags, configFile, showVersion := config.ParseFlags()
